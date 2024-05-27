@@ -11,6 +11,7 @@ pip install evaluate
 pip install torch
 
 pip install accelerate -U
+pip install protobuf
 
 
 """
@@ -18,6 +19,9 @@ pip install accelerate -U
 # default libraries (no need extra import)
 import pandas as pd
 import numpy as np
+
+#library for loading dataset (not absolute path) 
+import os
 
 # other libraries
 import transformers
@@ -40,10 +44,14 @@ tokenizer = T5Tokenizer.from_pretrained("t5-small")
 data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model="t5-small")
 
 """
-CHANGE PATH IF NEEDED 
+PATH TO THE FILE 
 """
 
-file_path = '/Users/liza/PycharmProjects/title-generator/very_huge_ds.csv'
+current_directory = os.path.dirname(os.path.abspath(__file__))
+
+file_path = os.path.join(current_directory, 'very_huge_ds.csv')
+
+#file_path = '/Users/liza/PycharmProjects/title-generator/very_huge_ds.csv'
 
 """
 FILE READING
@@ -63,7 +71,7 @@ TOKENIZING with T5Tokenizer
 def preprocess_function(item):
    inputs = ["summarize: " + doc for doc in item["text"]]
    model_inputs = tokenizer(inputs, max_length=530, truncation=True)
-   labels = tokenizer(text_target=item["clickbate_title"], max_length=15, truncation=True)
+   labels = tokenizer(text_target=item["clickbate_title"], max_length=30, truncation=True)
    model_inputs["labels"] = labels["input_ids"]
    return model_inputs
 
@@ -114,17 +122,20 @@ PARAMETERS FOR MODEL
 """
 
 
-model = AutoModelForSeq2SeqLM.from_pretrained("t5-base")
+model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
+
+output_dir = "t5_small_clickbait"
+os.makedirs(output_dir, exist_ok=True)
 
 training_args = Seq2SeqTrainingArguments(
-   output_dir="my_fine_tuned_t5-base_model",
+   output_dir= output_dir,
    evaluation_strategy="epoch",
    learning_rate=2e-5,
    per_device_train_batch_size=2,
    per_device_eval_batch_size=2,
    weight_decay=0.01,
    save_total_limit=3,
-   num_train_epochs=2,
+   num_train_epochs=3,
    predict_with_generate=True,
    fp16=False,  # Disable mixed precision training
 )
@@ -149,23 +160,18 @@ trainer.train()
 MODEL SAVE
 """
 
-model_path = "clickbate_title_new_t5-base_model"
-model = T5ForConditionalGeneration.from_pretrained(model_path)
+trainer.save_model(output_dir)
 
-"""
-MODEL TEST ON TEXT EXAMPLE
-"""
 
-# Define the input text (from test set)
+"""TEST ON EXAMPLE"""
+
 text = title_dataset['test'][4]['text']
 text = "summarize: " + text
+text
 
+from transformers import pipeline
 
-# Tokenize and generate the summary
-inputs = tokenizer(text, return_tensors="pt", max_length=512, truncation=True)
-outputs = model.generate(**inputs, max_length=30, min_length=5)
+summarizer = pipeline("summarization", model="t5_small_clickbait")
+pred = summarizer(text, max_length=15, min_length=5)
 
-
-# Decode and print the summary
-pred = tokenizer.decode(outputs[0], skip_special_tokens=True)
 print(pred)
